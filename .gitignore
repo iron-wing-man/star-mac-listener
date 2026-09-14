@@ -1,0 +1,16 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Build artifacts
+StarListener.app/
+*.o
+*.dSYM/
+
+# Runtime logs & temp files
+*.log
+listener.log
+tmp/
+/tmp/
