@@ -1,0 +1,12 @@
+{
+    "starHost": "192.168.4.33",
+    "starPort": 5001,
+    "clientId": "mac-listener",
+    "minRecordSec": 1.5,
+    "maxRecordSec": 6.0,
+    "silenceTimeoutSec": 1.0,
+    "silenceThresholdRms": 0.015,
+    "errorDisplaySec": 4.0,
+    "hotKeyModifiers": ["control", "option"],
+    "hotKeyCode": 49
+}

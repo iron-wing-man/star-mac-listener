@@ -21,8 +21,8 @@ if [ -f "${BASE_DIR}/assets/AppIcon.icns" ]; then
 fi
 
 # 3. 編譯 Swift 程式碼
-echo "Compiling src/main.swift..."
-swiftc -o "${MACOS_DIR}/StarListener" "${BASE_DIR}/src/main.swift"
+echo "Compiling Swift source files..."
+swiftc -o "${MACOS_DIR}/StarListener" "${BASE_DIR}/src/"*.swift
 if [ $? -ne 0 ]; then
     echo "❌ Swift compilation failed."
     exit 1
@@ -49,6 +49,13 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>需要存取本地網絡以連線至 star-service 伺服器。</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>需要使用麥克風來監聽廣東話喚醒詞「星仔」。</string>
 </dict>

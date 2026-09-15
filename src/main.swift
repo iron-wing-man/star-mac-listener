@@ -7,31 +7,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var wakeCount = 0
     var countMenuItem: NSMenuItem!
     
-    // 獲取 App 的外層目錄 (即 ~/Developer/star/star-mac-listener)
+    // Phase 2 components
+    var starConfig: StarConfig!
+    let captureService = AudioCaptureService()
+    var apiClient: StarApiClient!
+    let playbackService = AudioPlaybackService()
+    
+    var isBusy = false
+    var cooldownEndTime: Date = Date.distantPast
+    var currentActivity: NSObjectProtocol?
+    
     var baseDir: String {
         return Bundle.main.bundleURL.deletingLastPathComponent().path
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // 1. 初始化 Menu Bar 圖標 (平時待機使用低調精緻的 ☆)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem.button {
-            button.title = "☆"
+        updateStatusIcon("☆")
+
+        setupMenu()
+        
+        starConfig = StarConfig.load(from: "\(baseDir)/config")
+        apiClient = StarApiClient(config: starConfig)
+        
+        playbackService.onPlaybackFinished = { [weak self] in
+            self?.finishInteraction(success: true)
         }
 
-        // 2. 建立下拉選單
-        setupMenu()
+        GlobalHotKey.onTrigger = { [weak self] in
+            print("🚀 Triggered via Global Hotkey!")
+            self?.onWakeWordDetected()
+        }
+        GlobalHotKey.register(config: starConfig)
 
-        // 3. 啟動 Sherpa-ONNX 喚醒詞子進程
         startKeywordSpotter()
     }
 
     func setupMenu() {
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "☆ Star Wakeword Listener (Phase 1)", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "☆ Star Wakeword Listener (Phase 2)", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "● 狀態：監聽中", action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "🎯 喚醒詞：星仔", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "🎯 喚醒詞：星仔 (或全域快捷鍵)", action: nil, keyEquivalent: ""))
         
         countMenuItem = NSMenuItem(title: "📊 觸發統計：已成功喚醒 0 次", action: nil, keyEquivalent: "")
         menu.addItem(countMenuItem)
@@ -60,51 +77,107 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.terminate(nil)
     }
 
+    func updateStatusIcon(_ icon: String) {
+        DispatchQueue.main.async {
+            if let button = self.statusItem.button {
+                button.title = icon
+            }
+        }
+    }
+
     var resetWorkItem: DispatchWorkItem?
     var lastTriggerTime: Date = Date.distantPast
 
     func onWakeWordDetected() {
         DispatchQueue.main.async {
             let now = Date()
-            // 防抖：0.4 秒內嘅連續同一個事件過濾，避免重複響音
-            if now.timeIntervalSince(self.lastTriggerTime) < 0.4 {
+            
+            // 1. 防抖、防忙碌、防剛播放完的自我喚醒冷卻 (1.5秒內忽略)
+            if self.isBusy || now < self.cooldownEndTime || now.timeIntervalSince(self.lastTriggerTime) < 0.4 {
                 return
             }
             self.lastTriggerTime = now
-
+            self.isBusy = true
+            
             self.wakeCount += 1
             self.countMenuItem.title = "📊 觸發統計：已成功喚醒 \(self.wakeCount) 次 (剛剛)"
             
-            // 取消之前未完成嘅復原定時器
             self.resetWorkItem?.cancel()
-
-            // 喚醒時：星星瞬間被點亮，變為璀璨發光的 🌟！
-            if let button = self.statusItem.button {
-                button.title = "🌟"
-            }
             
-            // 播放清脆提示音
+            self.currentActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "StarVoiceInteraction")
+
+            self.updateStatusIcon("🎙️")
             NSSound(named: "Tink")?.play()
 
-            // 0.8 秒後快速恢復為待機狀態的 ☆
-            let workItem = DispatchWorkItem { [weak self] in
-                if let button = self?.statusItem.button {
-                    button.title = "☆"
+            // 等 Tink 提示音播完 (約 350ms) 先開始收音，避免錄入提示音干擾 STT 及聲紋
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self = self, self.isBusy else { return }
+                self.startInteractionFlow()
+            }
+        }
+    }
+
+    func startInteractionFlow() {
+        captureService.startRecording(config: starConfig) { [weak self] pcmData in
+            guard let self = self else { return }
+            
+            self.updateStatusIcon("⏳")
+            
+            Task {
+                do {
+                    let msgId = try await self.apiClient.sendAudio(pcmData: pcmData)
+                    let wavUrl = try await self.apiClient.pollStats(messageId: msgId)
+                    let wavData = try await self.apiClient.downloadVoiceResult(url: wavUrl)
+                    
+                    DispatchQueue.main.async {
+                        self.updateStatusIcon("🔊")
+                        self.playbackService.play(wavData: wavData)
+                    }
+                } catch {
+                    self.handleError(error)
                 }
             }
+        }
+    }
+
+    func handleError(_ error: Error) {
+        DispatchQueue.main.async {
+            let errorMsg = "❌ Interaction Error: \(error)\n"
+            print(errorMsg)
+            let logPath = "\(self.baseDir)/listener.log"
+            if let handle = FileHandle(forWritingAtPath: logPath) {
+                handle.seekToEndOfFile()
+                handle.write(errorMsg.data(using: .utf8)!)
+                handle.closeFile()
+            }
+
+            self.updateStatusIcon("😣")
+            
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.finishInteraction(success: false)
+            }
             self.resetWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + self.starConfig.errorDisplaySec, execute: workItem)
+        }
+    }
+
+    func finishInteraction(success: Bool) {
+        DispatchQueue.main.async {
+            self.updateStatusIcon("☆")
+            if let activity = self.currentActivity {
+                ProcessInfo.processInfo.endActivity(activity)
+                self.currentActivity = nil
+            }
+            self.cooldownEndTime = Date().addingTimeInterval(1.5)
+            self.isBusy = false
         }
     }
 
     // 專為廣東話「星仔」設計嘅全方位諧音與近音匹配器
     func isStarWakeWord(_ text: String) -> Bool {
-        // 1. 原生與前綴包含
         if text.contains("星仔") || text.contains("你好星仔") || text.contains("阿星") || text.contains("星哥") {
             return true
         }
-        
-        // 2. 廣東話近音字 / 諧音字（包含連續說話時模型轉錄偏差）
         let variants = [
             "星子", "醒仔", "升仔", "聲仔", "勝仔", "新仔", "清仔", "先仔",
             "醒子", "升子", "聲子", "新子", "星指", "星之", "星際",
@@ -112,16 +185,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "xingzai", "singzai", "xing zai", "sing zai"
         ]
         for variant in variants {
-            if text.contains(variant) {
-                return true
-            }
+            if text.contains(variant) { return true }
         }
-        
-        // 3. 正則模式：[星/醒/升/聲/勝/新/兄] + [仔/子/指/之/球/計]
         if text.range(of: "[星醒升聲勝新兄][仔子指之球计計]", options: .regularExpression) != nil {
             return true
         }
-        
         return false
     }
 
@@ -130,15 +198,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let modelDir = "\(baseDir)/model"
         let keywordsPath = "\(baseDir)/config/keywords.txt"
         
-        // 檢查執行檔是否存在
         if !FileManager.default.fileExists(atPath: binPath) {
             print("Error: sherpa-onnx binary not found at \(binPath)")
             return
         }
 
         process = Process()
-        
-        // 使用 stdbuf -oL 強制 line buffering，解決 C++ stdout 延遲問題
         process?.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process?.arguments = [
             "stdbuf", "-oL",
@@ -151,7 +216,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "--keywords-score=2.0",
             "--keywords-threshold=0.06",
             "--max-active-paths=16",
-            "--num-threads=1" // ⚡ 單線程運行，CPU 鎖定在 2%~3%，極致省電
+            "--num-threads=1"
         ]
 
         let pipe = Pipe()
@@ -184,8 +249,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         logFileHandle.write(logData)
                     }
                 }
-                // 專用 KWS 輸出 JSON 格式包含 "keyword" 或命中 "星仔"
-                if line.contains("\"keyword\"") || line.contains("星仔") || line.contains("keyword") {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.hasPrefix("{") && trimmed.contains("\"keyword\"") {
+                    self?.onWakeWordDetected()
+                } else if trimmed.contains("星仔") && !trimmed.contains("keywords_file") {
+                    // Fallback for non-JSON output just in case
                     self?.onWakeWordDetected()
                 }
             }
