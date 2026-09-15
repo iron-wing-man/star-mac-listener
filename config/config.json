@@ -6,7 +6,9 @@
     "maxRecordSec": 6.0,
     "silenceTimeoutSec": 1.0,
     "silenceThresholdRms": 0.015,
-    "errorDisplaySec": 4.0,
+    "errorDisplaySec": 1.2,
+    "followUpListenSec": 3.5,
+    "fastPollIntervalMs": 250,
     "hotKeyModifiers": ["control", "option"],
     "hotKeyCode": 49
 }

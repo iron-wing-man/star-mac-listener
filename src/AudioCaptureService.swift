@@ -11,7 +11,23 @@ class AudioCaptureService {
     private var silenceStartTime: Date?
     private var recordStartTime: Date?
     
-    func startRecording(config: StarConfig, onFinished: @escaping (Data) -> Void) {
+    var recordingActive: Bool {
+        return isRecording
+    }
+    
+    var isSpeechActive: Bool {
+        return isRecording && speechStarted
+    }
+    
+    func startRecording(
+        config: StarConfig,
+        timeoutWithoutSpeechSec: Double? = nil,
+        onSpeechStarted: (() -> Void)? = nil,
+        onFinished: @escaping (Data) -> Void
+    ) {
+        // 先確保之前的錄音安全停止
+        stopRecording()
+
         let inputNode = engine.inputNode
         let hardwareFormat = inputNode.outputFormat(forBus: 0)
         
@@ -77,7 +93,12 @@ class AudioCaptureService {
             
             // 靜音偵測邏輯
             if rms > config.silenceThresholdRms {
-                self.speechStarted = true
+                if !self.speechStarted {
+                    self.speechStarted = true
+                    DispatchQueue.main.async {
+                        onSpeechStarted?()
+                    }
+                }
                 self.silenceStartTime = nil
             } else if self.speechStarted {
                 if self.silenceStartTime == nil {
@@ -92,13 +113,22 @@ class AudioCaptureService {
                       let silenceStart = self.silenceStartTime,
                       now.timeIntervalSince(silenceStart) >= config.silenceTimeoutSec {
                 shouldStop = true
+            } else if !self.speechStarted,
+                      let timeoutNoSpeech = timeoutWithoutSpeechSec,
+                      elapsed >= timeoutNoSpeech {
+                shouldStop = true
             }
             
             if shouldStop {
                 self.isRecording = false
-                self.stopRecording()
+                let wasSpeechStarted = self.speechStarted
                 let capturedData = self.pcmData
-                onFinished(capturedData)
+                self.stopRecording()
+                if wasSpeechStarted {
+                    onFinished(capturedData)
+                } else {
+                    onFinished(Data())
+                }
             }
         }
         
@@ -114,8 +144,12 @@ class AudioCaptureService {
     }
     
     func stopRecording() {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        guard isRecording || engine.isRunning else { return }
+        isRecording = false
+        if engine.isRunning {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
         print("🛑 Stopped audio capture (captured \(pcmData.count) bytes, approx \(Double(pcmData.count) / 32000.0)s)")
     }
 }

@@ -16,7 +16,7 @@ class StarApiClient {
         self.config = config
     }
     
-    func sendAudio(pcmData: Data) async throws -> Int {
+    func sendAudio(pcmData: Data, isAppend: Bool = false, isBargeIn: Bool = false) async throws -> Int {
         guard let url = URL(string: "http://\(config.starHost):\(config.starPort)/web_request") else {
             throw StarError.networkError("Invalid URL")
         }
@@ -24,6 +24,12 @@ class StarApiClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(config.clientId, forHTTPHeaderField: "X-Response-IP")
+        if isAppend {
+            request.setValue("append", forHTTPHeaderField: "X-Action")
+        }
+        if isBargeIn {
+            request.setValue("true", forHTTPHeaderField: "X-Barge-In")
+        }
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.httpBody = pcmData
         
@@ -46,7 +52,8 @@ class StarApiClient {
             throw StarError.badResponse
         }
         
-        print("✅ POST /web_request success, id: \(id)")
+        let status = json["status"] as? String ?? "ok"
+        print("✅ POST /web_request success (status: \(status)), id: \(id)")
         return id
     }
     
@@ -56,10 +63,12 @@ class StarApiClient {
         }
         
         var request = URLRequest(url: url)
-        request.setValue(config.clientId, forHTTPHeaderField: "X-Response-IP") // Needs X-Real-IP or X-Response-IP depending on how backend reads it. Wait, the backend uses X-Real-IP or request.client.host, but for web_request_stats it uses X-Real-IP. Actually we should set X-Real-IP if it expects that, but the backend uses `sender_ip = request.headers.get("X-Real-IP", request.client.host)`. So we don't strictly need it if we are on the same network, but let's set it.
+        request.setValue(config.clientId, forHTTPHeaderField: "X-Response-IP")
         request.setValue(config.clientId, forHTTPHeaderField: "X-Real-IP")
         
-        let maxAttempts = 30 // 45 seconds total (1.5s * 30)
+        let intervalMs = config.fastPollIntervalMs > 0 ? config.fastPollIntervalMs : 250
+        let maxAttempts = (45 * 1000) / intervalMs
+        var lastStatus = ""
         
         for i in 1...maxAttempts {
             let (data, response) = try await session.data(for: request)
@@ -78,12 +87,14 @@ class StarApiClient {
                         print("❌ Request \(status)")
                         throw StarError.pipelineFailed
                     }
-                    // status is "processing" or "requested" or "idle", continue polling
-                    print("⏳ Polling... status: \(status)")
+                    if status != lastStatus || i % 4 == 0 {
+                        print("⏳ Polling... status: \(status)")
+                        lastStatus = status
+                    }
                 }
             }
             
-            try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+            try await Task.sleep(nanoseconds: UInt64(intervalMs) * 1_000_000)
         }
         
         throw StarError.timeout

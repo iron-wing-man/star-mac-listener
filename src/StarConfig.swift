@@ -8,7 +8,9 @@ struct StarConfig: Codable {
     var maxRecordSec: Double = 5.0
     var silenceTimeoutSec: Double = 0.8
     var silenceThresholdRms: Float = 0.015
-    var errorDisplaySec: Double = 4.0
+    var errorDisplaySec: Double = 1.2
+    var followUpListenSec: Double = 3.5
+    var fastPollIntervalMs: Int = 250
     var hotKeyModifiers: [String] = ["control", "option"]
     var hotKeyCode: Int = 49
 
