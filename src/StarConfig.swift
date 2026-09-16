@@ -5,8 +5,8 @@ struct StarConfig: Codable {
     var starPort: Int = 5001
     var clientId: String = "mac-listener"
     var minRecordSec: Double = 1.0
-    var maxRecordSec: Double = 5.0
-    var silenceTimeoutSec: Double = 0.8
+    var maxRecordSec: Double = 15.0
+    var silenceTimeoutSec: Double = 1.5
     var silenceThresholdRms: Float = 0.015
     var errorDisplaySec: Double = 1.2
     var followUpListenSec: Double = 3.5

@@ -54,6 +54,7 @@
   <string>需要使用麥克風來監聽語音喚醒詞。</string>
   ```
 * 若遺漏，macOS CoreAudio 會在底層返回全 0 的靜音數據（Silence），導致程式表面正常運行卻永遠聽不到聲音。
+* **App Bundle 必須進行代碼簽名 (Code Signing)**：在 `scripts/build_app.sh` 必須包含 `codesign --force --deep -s - StarListener.app`。若未封裝簽名，macOS TCC 系統會判定 Bundle 資源簽名不完整（`code has no resources but signature indicates they must be present`），導致每次啟動 App 都會強制重新彈出詢問麥克風權限的對話框，無法永久記住授權。
 
 ---
 

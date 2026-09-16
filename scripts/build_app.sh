@@ -62,4 +62,9 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
 </plist>
 EOF
 
+# 5. 對整個 App Bundle 進行代碼簽名 (Code Signing)
+# ⚠️ 必須執行 codesign 密封 bundle，否則 macOS TCC 會判定簽名損壞，導致每次啟動都重問麥克風權限
+echo "Signing StarListener.app bundle..."
+codesign --force --deep -s - "${APP_DIR}"
+
 echo "✅ Build completed successfully! App bundle is at ${APP_DIR}"
