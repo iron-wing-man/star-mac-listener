@@ -40,17 +40,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         playbackService.onPlaybackFinished = { [weak self] in
             // 等喇叭殘響播完 (約 300ms) 先切入 👂 連續對話，避免殘響干擾 VAD
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                guard let self = self, self.isBusy else { return }
+                guard let self = self, !self.isPaused, self.isBusy else { return }
                 self.startFollowUpListening()
             }
         }
 
         GlobalHotKey.onTrigger = { [weak self] in
-            print("🚀 Triggered via Global Hotkey!")
-            if let self = self, self.isPaused {
-                self.resumeListening()
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                print("⌨️ Global HotKey pressed! (Current isPaused: \(self.isPaused))")
+                if self.isPaused {
+                    // Sleep -> Awake: 恢復監聽並直接開咪
+                    self.resumeListening()
+                    self.onWakeWordDetected()
+                } else {
+                    // Awake -> Sleep: 無論處於待命、錄音、等待抑或播放中，即刻全面停止並入睡
+                    self.pauseListening()
+                }
             }
-            self?.onWakeWordDetected()
         }
         GlobalHotKey.register(config: starConfig)
 
@@ -64,7 +71,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         statusMenuItem = NSMenuItem(title: "● 狀態：監聽中", action: #selector(togglePause), keyEquivalent: "p")
         menu.addItem(statusMenuItem)
-        menu.addItem(NSMenuItem(title: "🎯 喚醒詞：星仔 (或全域快捷鍵)", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "🎯 喚醒詞：Stella | 快捷鍵：休眠/喚醒", action: nil, keyEquivalent: ""))
         
         countMenuItem = NSMenuItem(title: "📊 觸發統計：已成功喚醒 0 次", action: nil, keyEquivalent: "")
         menu.addItem(countMenuItem)
@@ -91,14 +98,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         isPaused = true
         statusMenuItem.title = "⏸ 狀態：已暫停 (點擊恢復)"
         updateStatusIcon("😴")
+        
+        // 1. 終止背景喚醒進程
         process?.terminate()
         process = nil
-        print("⏸ Listener paused, background process terminated.")
+        
+        // 2. 即時中斷當前所有音訊錄音
+        captureService.stopRecording()
+        
+        // 3. 取消背景網絡請求與輪詢 Task
+        currentInteractionTask?.cancel()
+        currentInteractionTask = nil
+        
+        // 4. 停止音訊播放
+        playbackService.stop()
+        
+        // 5. 取消重設或錯誤還原計時
+        resetWorkItem?.cancel()
+        resetWorkItem = nil
+        
+        // 6. 釋放系統防休眠 Assertion
+        if let activity = currentActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            currentActivity = nil
+        }
+        
+        // 7. 重設內部狀態旗標
+        isBusy = false
+        isFollowUp = false
+        isAppendListening = false
+        isAppendInFlight = false
+        followUpRetryCount = 0
+        
+        print("⏸ Listener paused, all audio/tasks stopped and background process terminated.")
     }
     
     func resumeListening() {
         guard isPaused else { return }
         isPaused = false
+        cooldownEndTime = Date.distantPast
+        lastTriggerTime = Date.distantPast
         statusMenuItem.title = "● 狀態：監聽中 (點擊暫停)"
         updateStatusIcon("☆")
         print("▶️ Listener resumed, starting background process...")
@@ -133,7 +172,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func onWakeWordDetected() {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, !self.isPaused else { return }
             let now = Date()
             
             // 1. 如果正喺度播緊聲（TTS），嚴格禁止自我喚醒與打斷，確保星仔講完每一句話
@@ -165,20 +204,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             self.currentActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "StarVoiceInteraction")
 
-            self.updateStatusIcon("🎙️")
+            // 提示音播緊嗰陣顯示 ✨，避免用家提早講嘢被截頭；等提示音播完 (350ms) 正式開咪先轉 🎙️
+            self.updateStatusIcon("✨")
             NSSound(named: "Tink")?.play()
 
             // 等 Tink 提示音播完 (約 350ms) 先開始收音，避免錄入提示音干擾 STT 及聲紋
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                guard let self = self, self.isBusy else { return }
+                guard let self = self, self.isBusy, !self.isPaused else { return }
                 self.startInitialRecording()
             }
         }
     }
 
     func startInitialRecording() {
+        guard !isPaused, isBusy else { return }
+        self.updateStatusIcon("🎙️")
         captureService.startRecording(config: starConfig) { [weak self] pcmData in
-            guard let self = self, self.isBusy else { return }
+            guard let self = self, self.isBusy, !self.isPaused else { return }
             
             if pcmData.isEmpty {
                 print("⚠️ Initial recording returned empty audio, returning to idle.")
@@ -193,18 +235,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func executeInteraction(pcmData: Data, isFollowUpTurn: Bool) {
         currentInteractionTask?.cancel()
-        currentInteractionTask = Task {
+        currentInteractionTask = Task { [weak self] in
+            guard let self = self else { return }
             do {
+                if Task.isCancelled || self.isPaused { return }
                 // 1. 即時啟動思考中追加監聽 (不用等 sendAudio 網絡來回，零時間縫隙)
                 self.startThinkingAppendListening()
                 
                 let msgId = try await self.apiClient.sendAudio(pcmData: pcmData)
+                if Task.isCancelled || self.isPaused { return }
                 
                 // 250ms 高速輪詢
                 var wavUrl = try await self.apiClient.pollStats(messageId: msgId)
+                if Task.isCancelled || self.isPaused { return }
                 
                 // 2. 關鍵保護：如果用家正喺度講緊追加嘅嘢 (isSpeechActive)，絕對唔好中斷用家！
                 while self.captureService.isSpeechActive {
+                    if Task.isCancelled || self.isPaused { return }
                     print("🎙️ User is actively speaking append chunk, waiting for utterance to finish...")
                     try await Task.sleep(nanoseconds: 250_000_000)
                 }
@@ -214,19 +261,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     print("⏳ Append was sent in flight, re-polling for updated response...")
                     wavUrl = try await self.apiClient.pollStats(messageId: msgId)
                 }
+                if Task.isCancelled || self.isPaused { return }
                 
                 // 伺服器已完成且用家冇講緊嘢，關閉追加監聽並下載音訊
                 self.stopThinkingAppendListening()
                 let wavData = try await self.apiClient.downloadVoiceResult(url: wavUrl)
+                if Task.isCancelled || self.isPaused { return }
                 
                 DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
+                    guard let self = self, !self.isPaused, self.isBusy else { return }
                     self.followUpRetryCount = 0
                     self.updateStatusIcon("🔊")
                     self.playbackService.play(wavData: wavData)
                 }
             } catch {
                 self.stopThinkingAppendListening()
+                if Task.isCancelled || self.isPaused {
+                    print("🛑 Interaction cancelled or listener paused, ignoring error.")
+                    return
+                }
+                if let urlErr = error as? URLError, urlErr.code == .cancelled {
+                    print("🛑 Network request cancelled.")
+                    return
+                }
+                if error is CancellationError {
+                    print("🛑 Task cancellation caught.")
+                    return
+                }
                 self.handleError(error, isFollowUpTurn: isFollowUpTurn)
             }
         }
@@ -235,7 +296,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // 思考中微監聽：若用家喺星仔諗緊嗰陣繼續講嘢，自動錄低並送去後端 Cancel & Combine
     func startThinkingAppendListening() {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self, self.isBusy && !self.playbackService.isPlaying else { return }
+            guard let self = self, !self.isPaused, self.isBusy && !self.playbackService.isPlaying else { return }
             self.isAppendListening = true
             print("👂 Started Thinking Append Listener (waiting for follow-up speech)...")
             
@@ -246,7 +307,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     print("🎙️ Speech detected during thinking! Capturing append chunk...")
                 }
             ) { [weak self] appendPcmData in
-                guard let self = self else { return }
+                guard let self = self, !self.isPaused else { return }
                 self.isAppendListening = false
                 
                 if !appendPcmData.isEmpty {
@@ -258,7 +319,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             print("✅ Append audio sent successfully!")
                             self.isAppendInFlight = false
                             // 若依然喺思考中，繼續支援下一段追加
-                            if self.isBusy && !self.playbackService.isPlaying {
+                            if self.isBusy && !self.playbackService.isPlaying && !self.isPaused {
                                 self.startThinkingAppendListening()
                             }
                         } catch {
@@ -284,7 +345,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // 連續對話模式 (Follow-up Mode)：播完 TTS 後保持 👂 3.5 秒
     func startFollowUpListening() {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self, !self.playbackService.isPlaying else { return }
+            guard let self = self, !self.isPaused, !self.playbackService.isPlaying else { return }
             self.updateStatusIcon("👂")
             self.isFollowUp = true
             self.isBusy = true
@@ -294,11 +355,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 config: self.starConfig,
                 timeoutWithoutSpeechSec: self.starConfig.followUpListenSec,
                 onSpeechStarted: { [weak self] in
-                    self?.updateStatusIcon("🎙️")
+                    guard let self = self, !self.isPaused else { return }
+                    self.updateStatusIcon("🎙️")
                     print("🎙️ Follow-up speech detected! Recording...")
                 }
             ) { [weak self] pcmData in
-                guard let self = self, self.isFollowUp else { return }
+                guard let self = self, !self.isPaused, self.isFollowUp else { return }
                 self.isFollowUp = false
                 
                 if pcmData.isEmpty {
@@ -317,7 +379,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleError(_ error: Error, isFollowUpTurn: Bool = false) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            let errorMsg = "❌ Interaction Error: \(error)\n"
+            
+            if case StarError.noSpeechDetected = error {
+                let errorMsg = "⚠️ 伺服器未檢測到有效語音指令 (STT 回傳為空)，請在聽到提示音後清晰說出完整問題。\n"
+                print(errorMsg)
+                let logPath = "\(self.baseDir)/listener.log"
+                if let handle = FileHandle(forWritingAtPath: logPath) {
+                    handle.seekToEndOfFile()
+                    handle.write(errorMsg.data(using: .utf8)!)
+                    handle.closeFile()
+                }
+                self.updateStatusIcon("❓")
+                self.resetWorkItem?.cancel()
+                let workItem = DispatchWorkItem { [weak self] in
+                    self?.finishInteraction(success: false)
+                }
+                self.resetWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: workItem)
+                return
+            }
+
+            var errorMsg = "❌ Interaction Error: \(error)\n"
+            let errorString = "\(error)"
+            if errorString.contains("Local network prohibited") || errorString.contains("offline") {
+                errorMsg += "💡 [權限提示] 檢測到本地網絡連線受阻 (Local network prohibited)。請至 macOS「系統設定 > 隱私權與安全性 > 本地網絡」確保 StarListener 權限已開啟 (ON)。\n"
+            }
             print(errorMsg)
             let logPath = "\(self.baseDir)/listener.log"
             if let handle = FileHandle(forWritingAtPath: logPath) {
@@ -368,24 +454,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // 專為廣東話「星仔」設計嘅全方位諧音與近音匹配器
-    func isStarWakeWord(_ text: String) -> Bool {
-        if text.contains("星仔") || text.contains("你好星仔") || text.contains("阿星") || text.contains("星哥") {
-            return true
-        }
-        let variants = [
-            "星子", "醒仔", "升仔", "聲仔", "勝仔", "新仔", "清仔", "先仔",
-            "醒子", "升子", "聲子", "新子", "星指", "星之", "星際",
-            "兄仔", "星球", "星计", "星計", "星系", "星记", "星記",
-            "xingzai", "singzai", "xing zai", "sing zai"
-        ]
-        for variant in variants {
-            if text.contains(variant) { return true }
-        }
-        if text.range(of: "[星醒升聲勝新兄][仔子指之球计計]", options: .regularExpression) != nil {
-            return true
-        }
-        return false
+    func isStellaWakeWord(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.contains("stella") || text.contains("星仔")
     }
 
     func startKeywordSpotter() {
@@ -446,10 +517,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.hasPrefix("{") && trimmed.contains("\"keyword\"") {
-                    self?.onWakeWordDetected()
-                } else if trimmed.contains("星仔") && !trimmed.contains("keywords_file") {
+                    if let self = self, !self.isPaused {
+                        self.onWakeWordDetected()
+                    }
+                } else if (trimmed.contains("Stella") || trimmed.contains("星仔")) && !trimmed.contains("keywords_file") {
                     // Fallback for non-JSON output just in case
-                    self?.onWakeWordDetected()
+                    if let self = self, !self.isPaused {
+                        self.onWakeWordDetected()
+                    }
                 }
             }
         }
