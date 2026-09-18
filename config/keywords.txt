@@ -1,16 +1,37 @@
+S T EH1 L AH0 @Stella
+S T EH0 L AH0 @Stella
+S T EH2 L AH0 @Stella
+S T EH1 L AA0 @Stella
+S T EH1 L AA1 @Stella
+S T EH0 L AA0 @Stella
+S T EY1 L AH0 @Stella
+S T EY0 L AH0 @Stella
+S T EY1 L AA0 @Stella
+S T EY0 L AA0 @Stella
+S T AE1 L AH0 @Stella
+S D EH1 L AH0 @Stella
+S D EH0 L AH0 @Stella
+S D EH1 L AA0 @Stella
+S D EH0 L AA0 @Stella
+S D EY1 L AH0 @Stella
+S D EY0 L AA0 @Stella
+S IH0 T EH1 L AH0 @Stella
+S IH0 D EH1 L AH0 @Stella
+S IY0 T EH1 L AH0 @Stella
+S IY0 D EH1 L AH0 @Stella
+HH EH1 L OW1 S T EH1 L AH0 @Hello_Stella
+HH AH0 L OW1 S T EH1 L AH0 @Hello_Stella
+HH AY1 S T EH1 L AH0 @Hi_Stella
+HH EY1 S T EH1 L AH0 @Hey_Stella
+HH EH1 L OW1 S T EH0 L AA0 @Hello_Stella
+HH AY1 S T EH0 L AA0 @Hi_Stella
+HH EY1 S T EH0 L AA0 @Hey_Stella
+HH AY1 S D EH1 L AH0 @Hi_Stella
+HH EY1 S D EH1 L AH0 @Hey_Stella
+s t è l ā @Stella
+s d è l ā @Stella
+s ī t è l ā @Stella
+s ī d è l ā @Stella
 sh ēng z ài @星仔
-sh ēng z ǎi @星仔
-sh ēng z āi @星仔
-sh ēng z ǐ @星仔
 s īng z ài @星仔
-s īng z ǎi @星仔
-s īng z āi @星仔
-s īng z ǐ @星仔
-s ēng z ài @星仔
-s ēng z ǎi @星仔
-x īng z ài @星仔
-x īng z ǎi @星仔
-x īng z ǐ @星仔
 n ǐ h ǎo sh ēng z ài @你好星仔
-n ǐ h ǎo s īng z ǎi @你好星仔
-n ǐ h ǎo x īng z ǎi @你好星仔

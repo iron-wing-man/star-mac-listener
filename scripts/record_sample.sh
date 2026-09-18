@@ -16,7 +16,7 @@ echo "=================================================="
 echo ""
 echo "即將開始錄音..."
 echo "倒數 3 秒後會響起「叮 (Ping)」一聲，"
-echo "聽到提示音後，請用正常說話音量清晰講出：「星仔」（講兩次，例如：星仔...星仔）"
+echo "聽到提示音後，請用正常說話音量清晰講出：「Stella」（講兩次，例如：Stella...Stella）"
 echo "錄音持續 5 秒，結束時會響起「玻璃聲 (Glass)」提示音。"
 echo "=================================================="
 echo ""
@@ -30,7 +30,7 @@ done
 
 # 開始提示音
 afplay /System/Library/Sounds/Ping.aiff 2>/dev/null || true
-echo "🔴 【錄音中 (5秒)】請清晰講出：「星仔」..."
+echo "🔴 【錄音中 (5秒)】請清晰講出：「Stella」..."
 
 # 錄音 5 秒 16kHz 16-bit mono WAV
 /opt/homebrew/bin/ffmpeg -y -loglevel error -f avfoundation -i ":0" -t 5 -ar 16000 -ac 1 "$OUTPUT_WAV"
@@ -84,7 +84,7 @@ done
 echo ""
 echo "=================================================="
 if [ -n "$WINNING_TH" ]; then
-    echo "✅ 驗證成功！模型成功從你的真實錄音識別出「星仔」！"
+    echo "✅ 驗證成功！模型成功從你的真實錄音識別出「Stella」！"
     echo "💡 最佳實測 threshold: $WINNING_TH"
     echo ""
     echo "➡️ 自動將最佳參數套用至 StarListener 並重啟..."
@@ -98,7 +98,7 @@ if [ -n "$WINNING_TH" ]; then
     "$PROJECT_DIR/start.sh" >/dev/null 2>&1
     echo "🚀 StarListener 已使用 threshold=$WINNING_TH 重新編譯並上線運行！"
 else
-    echo "⚠️ 暫時未能識別出「星仔」。"
-    echo "請確認剛才錄音時是否有聽到「叮」聲並清晰對住 Mac 麥克風講「星仔」。"
+    echo "⚠️ 暫時未能識別出「Stella」。"
+    echo "請確認剛才錄音時是否有聽到「叮」聲並清晰對住 Mac 麥克風講「Stella」。"
 fi
 echo "=================================================="

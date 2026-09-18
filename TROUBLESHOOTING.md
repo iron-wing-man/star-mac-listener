@@ -30,6 +30,7 @@ tail -f ~/Developer/star/star-mac-listener/listener.log
 | 日誌完全無 `Started`，進程閃退 | 誤用了 `sherpa-onnx-keyword-spotter`（非 microphone 版） | 確保執行檔是 `sherpa-onnx-keyword-spotter-microphone`。 |
 | 日誌有 `Started`，但說話日誌毫無反應 | 麥克風音訊為全靜音（macOS 權限未授權） | 檢查 `Info.plist` 中的 `NSMicrophoneUsageDescription`，或在系統設定重設權限。 |
 | 每次啟動都重問麥克風權限 | Bundle 未進行 codesign 封裝，TCC 判定簽名損壞 | 在 `scripts/build_app.sh` 執行 `codesign --force --deep -s - StarListener.app` 密封簽名。 |
+| 喚醒後圖標變 😵‍💫 且日誌顯示 `Local network prohibited` | macOS Sequoia+ 本地網絡權限未授權 | 至「系統設定 > 隱私權與安全性 > 本地網絡」將 `StarListener` 權限切換為開啟（ON），然後重啟 App。 |
 | CPU 飆升至 100% | 子進程退出後 `readabilityHandler` 未被解除 | 檢查 `pipe.availableData.isEmpty` 時是否設 handler 為 `nil`。 |
 
 ---

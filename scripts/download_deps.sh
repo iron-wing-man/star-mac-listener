@@ -24,17 +24,17 @@ cp sherpa-onnx-v1.13.8-osx-arm64-static/bin/sherpa-onnx-keyword-spotter "${BIN_D
 chmod +x "${BIN_DIR}/sherpa-onnx-keyword-spotter-microphone" "${BIN_DIR}/sherpa-onnx-keyword-spotter"
 echo "✅ Binaries installed."
 
-# 2. Download Chinese KWS Model (WenetSpeech 3.3M)
+# 2. Download Bilingual Chinese/English KWS Model (Zipformer 3M)
 echo "2. Downloading KWS model..."
 cd /tmp
-curl -SL -O https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2
-tar xjf sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2
+curl -SL -O https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2
+tar xjf sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2
 
-MODEL_SRC="/tmp/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+MODEL_SRC="/tmp/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20"
 cp "${MODEL_SRC}/tokens.txt" "${MODEL_DIR}/"
-cp "${MODEL_SRC}/encoder-epoch-12-avg-2-chunk-16-left-64.onnx" "${MODEL_DIR}/encoder.onnx"
-cp "${MODEL_SRC}/decoder-epoch-12-avg-2-chunk-16-left-64.onnx" "${MODEL_DIR}/decoder.onnx"
-cp "${MODEL_SRC}/joiner-epoch-12-avg-2-chunk-16-left-64.onnx" "${MODEL_DIR}/joiner.onnx"
+cp "${MODEL_SRC}/encoder-epoch-13-avg-2-chunk-16-left-64.onnx" "${MODEL_DIR}/encoder.onnx"
+cp "${MODEL_SRC}/decoder-epoch-13-avg-2-chunk-16-left-64.onnx" "${MODEL_DIR}/decoder.onnx"
+cp "${MODEL_SRC}/joiner-epoch-13-avg-2-chunk-16-left-64.onnx" "${MODEL_DIR}/joiner.onnx"
 echo "✅ Model installed."
 
 # 3. Create default keywords.txt if not exists

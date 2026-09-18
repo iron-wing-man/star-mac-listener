@@ -4,6 +4,7 @@ enum StarError: Error {
     case networkError(String)
     case unrecognizedSpeaker
     case pipelineFailed
+    case noSpeechDetected
     case timeout
     case badResponse
 }
@@ -83,8 +84,11 @@ class StarApiClient {
                         }
                         print("✅ Poll finished: completed (\(i)/\(maxAttempts))")
                         return voiceUrl
-                    } else if status == "failed" || status == "ignored" {
-                        print("❌ Request \(status)")
+                    } else if status == "ignored" {
+                        print("⚠️ Request ignored by server (no speech / empty STT transcript)")
+                        throw StarError.noSpeechDetected
+                    } else if status == "failed" {
+                        print("❌ Request failed")
                         throw StarError.pipelineFailed
                     }
                     if status != lastStatus || i % 4 == 0 {

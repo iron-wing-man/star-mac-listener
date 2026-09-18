@@ -57,7 +57,7 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <key>NSLocalNetworkUsageDescription</key>
     <string>需要存取本地網絡以連線至 star-service 伺服器。</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>需要使用麥克風來監聽廣東話喚醒詞「星仔」。</string>
+    <string>需要使用麥克風來監聽語音喚醒詞「Stella」。</string>
 </dict>
 </plist>
 EOF
