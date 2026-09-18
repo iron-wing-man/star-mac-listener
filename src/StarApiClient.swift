@@ -18,7 +18,7 @@ class StarApiClient {
     }
     
     func sendAudio(pcmData: Data, isAppend: Bool = false, isBargeIn: Bool = false) async throws -> Int {
-        guard let url = URL(string: "http://\(config.starHost):\(config.starPort)/web_request") else {
+        guard let url = URL(string: "http://\(config.starHost):\(config.starPort)/api/web_request") else {
             throw StarError.networkError("Invalid URL")
         }
         
@@ -54,12 +54,12 @@ class StarApiClient {
         }
         
         let status = json["status"] as? String ?? "ok"
-        print("✅ POST /web_request success (status: \(status)), id: \(id)")
+        print("✅ POST /api/web_request success (status: \(status)), id: \(id)")
         return id
     }
     
     func pollStats(messageId: Int) async throws -> URL {
-        guard let url = URL(string: "http://\(config.starHost):\(config.starPort)/web_request_stats?id=\(messageId)") else {
+        guard let url = URL(string: "http://\(config.starHost):\(config.starPort)/api/web_request_stats?id=\(messageId)") else {
             throw StarError.networkError("Invalid URL")
         }
         

@@ -41,21 +41,13 @@ echo "✅ Model installed."
 if [ ! -f "${CONFIG_DIR}/keywords.txt" ]; then
     echo "3. Creating default config/keywords.txt..."
     cat <<EOF > "${CONFIG_DIR}/keywords.txt"
-sh ēng z ài @星仔
-sh ēng z ǎi @星仔
-sh ēng z āi @星仔
-sh ēng z ǐ @星仔
-s īng z ài @星仔
-s īng z ǎi @星仔
-s īng z ǐ @星仔
-s ēng z ài @星仔
-s ēng z ǎi @星仔
-x īng z ài @星仔
-x īng z ǎi @星仔
-x īng z ǐ @星仔
-n ǐ h ǎo sh ēng z ài @你好星仔
-n ǐ h ǎo s īng z ǎi @你好星仔
-n ǐ h ǎo x īng z ǎi @你好星仔
+S T EH1 L AH0 @Stella
+S T EH0 L AH0 @Stella
+S T EY1 L AH0 @Stella
+HH EH1 L OW1 S T EH1 L AH0 @Hello_Stella
+HH AY1 S T EH1 L AH0 @Hi_Stella
+HH EY1 S T EH1 L AH0 @Hey_Stella
+s t è l ā @Stella
 EOF
     echo "✅ Configuration created."
 else

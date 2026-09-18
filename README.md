@@ -1,14 +1,14 @@
-# StarListener (Mac 廣東話喚醒詞常駐守護進程)
+# StarListener (Mac 語音喚醒詞常駐守護進程)
 
 StarListener 係一個專為 macOS 設計、極度輕量（CPU 佔用僅 ~2%–3%）嘅原生 Menu Bar 守護應用程式（Daemon App）。
-佢常駐喺 macOS 狀態列（Menu Bar），持續監聽廣東話喚醒詞 **「星仔」** / **「你好星仔」**。
+佢常駐喺 macOS 狀態列（Menu Bar），持續監聽唯一喚醒詞 **「Stella」**（以及 Hello Stella / Hi Stella / Hey Stella）。
 
 ---
 
 ## 🌟 核心視覺與觸發體驗 (Visual & Audio Feedback)
 
 * **待機狀態 (Idle)**：螢幕右上角 Menu Bar（時鐘附近）常駐顯示單色星星 **`☆`**。
-* **喚醒觸發 (Triggered)**：當聽到「星仔」或「你好星仔」時，星星瞬間點亮為璀璨發光的 **`🌟`**，並同步播放系統提示音 `Tink`。
+* **喚醒觸發 (Triggered)**：當聽到「Stella」時，星星瞬間點亮為璀璨發光的 **`🌟`**，並同步播放系統提示音 `Tink`。
 * **重置狀態 (Reset)**：0.8 秒後自動恢復為待機狀態的 **`☆`**，防抖機制（Debounce 0.4s）避免重複觸發。
 
 ---

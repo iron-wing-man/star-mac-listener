@@ -181,7 +181,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             
-            // 2. 如果處於 👂 連續對話或追加狀態，叫「星仔」則平順切換到新喚醒
+            // 2. 如果處於 👂 連續對話或追加狀態，叫「Stella」則平順切換到新喚醒
             if self.isFollowUp || self.isAppendListening {
                 self.stopThinkingAppendListening()
                 self.captureService.stopRecording()
@@ -311,7 +311,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.isAppendListening = false
                 
                 if !appendPcmData.isEmpty {
-                    print("🔀 Captured append chunk (\(appendPcmData.count) bytes), sending to /web_request...")
+                    print("🔀 Captured append chunk (\(appendPcmData.count) bytes), sending to /api/web_request...")
                     self.isAppendInFlight = true
                     Task {
                         do {
@@ -456,7 +456,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func isStellaWakeWord(_ text: String) -> Bool {
         let lower = text.lowercased()
-        return lower.contains("stella") || text.contains("星仔")
+        return lower.contains("stella")
     }
 
     func startKeywordSpotter() {
@@ -516,11 +516,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.hasPrefix("{") && trimmed.contains("\"keyword\"") {
+                if trimmed.contains("\"keyword\"") && trimmed.lowercased().contains("stella") {
                     if let self = self, !self.isPaused {
                         self.onWakeWordDetected()
                     }
-                } else if (trimmed.contains("Stella") || trimmed.contains("星仔")) && !trimmed.contains("keywords_file") {
+                } else if trimmed.contains("Stella") && !trimmed.contains("keywords_file") {
                     // Fallback for non-JSON output just in case
                     if let self = self, !self.isPaused {
                         self.onWakeWordDetected()
