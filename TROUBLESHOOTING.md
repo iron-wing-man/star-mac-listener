@@ -16,7 +16,7 @@ tail -f ~/Developer/star/star-mac-listener/listener.log
 ```
 * **正常現象**：應該能看到 `Num devices: ... Use device: 0 ... Started`。
 * **喚醒現象**：當你說出喚醒詞時，日誌應即時印出：
-  `{"start_time":0.00, "keyword": "星仔", ...}`。
+  `{"start_time":0.00, "keyword": "Stella", ...}`。
 
 ---
 
@@ -25,7 +25,7 @@ tail -f ~/Developer/star/star-mac-listener/listener.log
 | :--- | :--- | :--- |
 | 進程存在但叫極無反應 | `process.standardError` 被分離或未讀取 | 檢查 `src/main.swift`，確保 `standardError = pipe`。所有命中 JSON 只在 stderr 輸出！ |
 | 多條規則時單詞不觸發 | `--max-active-paths` 預設值 4 過小 | 在 `main.swift` 與命令列明確指定 `--max-active-paths=16`，避免 Beam Search 剪枝。 |
-| 發音正確但觸發唔到 | 廣東話聲學音素未對齊 | WenetSpeech 聲學模型視角中，「星仔」對齊為 `sh ēng z ài @星仔`。檢查 `config/keywords.txt`。 |
+| 發音正確但觸發唔到 | 聲學音素未對齊 | 模型視角中，需對齊 `config/keywords.txt` 中的發音音素規則。 |
 | 門檻太嚴格 | 門檻大於 0.10 | 將 `--keywords-threshold` 調整為 `0.06`（實測最佳操作點，0 誤觸發）。 |
 | 日誌完全無 `Started`，進程閃退 | 誤用了 `sherpa-onnx-keyword-spotter`（非 microphone 版） | 確保執行檔是 `sherpa-onnx-keyword-spotter-microphone`。 |
 | 日誌有 `Started`，但說話日誌毫無反應 | 麥克風音訊為全靜音（macOS 權限未授權） | 檢查 `Info.plist` 中的 `NSMicrophoneUsageDescription`，或在系統設定重設權限。 |

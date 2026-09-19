@@ -175,9 +175,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self, !self.isPaused else { return }
             let now = Date()
             
-            // 1. 如果正喺度播緊聲（TTS），嚴格禁止自我喚醒與打斷，確保星仔講完每一句話
+            // 1. 如果正喺度播緊聲（TTS），嚴格禁止自我喚醒與打斷，確保 Stella 講完每一句話
             if self.playbackService.isPlaying {
-                print("🔇 星仔播緊聲中，忽略喚醒詞避免打斷...")
+                print("🔇 Stella 播緊聲中，忽略喚醒詞避免打斷...")
                 return
             }
             
@@ -293,7 +293,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // 思考中微監聽：若用家喺星仔諗緊嗰陣繼續講嘢，自動錄低並送去後端 Cancel & Combine
+    // 思考中微監聽：若用家喺 Stella 諗緊嗰陣繼續講嘢，自動錄低並送去後端 Cancel & Combine
     func startThinkingAppendListening() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isPaused, self.isBusy && !self.playbackService.isPlaying else { return }

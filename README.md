@@ -40,14 +40,9 @@ StarListener 係一個專為 macOS 設計、極度輕量（CPU 佔用僅 ~2%–3
 * **即時麥克風串流**：必須使用 `bin/sherpa-onnx-keyword-spotter-microphone`。
 * **離線 WAV 單元測試**：使用 `bin/sherpa-onnx-keyword-spotter`（只接收 wav 檔案，不可用於即時收音）。
 
-### 3. 廣東話聲學對齊真相 (Cantonese Phoneme Mapping)
-* 模型詞表 `tokens.txt` 採用聲母 + 帶聲調韻母建模。
-* **實測突破**：真人口語廣東話「星仔」(sing1 zai2) 在該聲學模型中被精準對齊為：
-  ```text
-  sh ēng z ài @星仔
-  n ǐ h ǎo sh ēng z ài @你好星仔
-  ```
-* 單純使用普通話拼音（如 `s īng z ǎi` 或 `x īng z ǐ`）在廣東話聲學特徵下距離過遠；引入 `sh ēng z ài` 後即刻 100% 秒命中！
+### 3. 聲學音素對齊 (Phoneme Mapping)
+* 模型詞表 `tokens.txt` 採用聲母 + 帶聲調韻母 / 英語音標建模。
+* 喚醒詞 `Stella` 及其變體（`Hello_Stella`, `Hi_Stella`, `Hey_Stella`）在 `config/keywords.txt` 中配置精準的音素對齊規則，確保秒速命中。
 
 ### 4. Beam Search 剪枝盲點 (`--max-active-paths=16`)
 * 官方二進制預設 `--max-active-paths=4`。當 `keywords.txt` 中有多個發音規則時，前綴分支競爭會導致 Beam Search 過早剪枝（Prune），造成漏檢。
