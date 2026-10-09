@@ -3,10 +3,10 @@ set -euo pipefail
 
 # generate_icon.sh - Generate AppIcon.icns from Stella master graphic
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="${BASE_DIR}/../star-components/Stella Origin.png"
+SRC="${BASE_DIR}/../starship/Stella Origin.png"
 
 if [ ! -f "$SRC" ]; then
-    SRC="${BASE_DIR}/../star-components/star-web-client/static/Stella.png"
+    SRC="${BASE_DIR}/../starship/star-web-client/static/Stella.png"
 fi
 
 if [ ! -f "$SRC" ]; then
