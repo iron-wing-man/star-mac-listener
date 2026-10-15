@@ -14,10 +14,17 @@ echo "Building StarListener Menu Bar App..."
 mkdir -p "${MACOS_DIR}"
 mkdir -p "${RESOURCES_DIR}"
 
-# 2. 複製 App Icon
+# 2. 複製 App Icon 與 Stella Vector Icon
 if [ -f "${BASE_DIR}/assets/AppIcon.icns" ]; then
     cp "${BASE_DIR}/assets/AppIcon.icns" "${RESOURCES_DIR}/AppIcon.icns"
     echo "✅ AppIcon.icns added to bundle."
+fi
+if [ -f "${BASE_DIR}/../star-mac-bridge-bar/stella_colored_vector.svg" ]; then
+    cp "${BASE_DIR}/../star-mac-bridge-bar/stella_colored_vector.svg" "${BASE_DIR}/assets/stella_colored_vector.svg"
+fi
+if [ -f "${BASE_DIR}/assets/stella_colored_vector.svg" ]; then
+    cp "${BASE_DIR}/assets/stella_colored_vector.svg" "${RESOURCES_DIR}/stella_colored_vector.svg"
+    echo "✅ stella_colored_vector.svg added to bundle."
 fi
 
 # 3. 編譯 Swift 程式碼

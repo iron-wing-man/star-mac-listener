@@ -10,5 +10,8 @@
     "followUpListenSec": 3.5,
     "fastPollIntervalMs": 250,
     "hotKeyModifiers": ["control", "option"],
-    "hotKeyCode": 49
+    "hotKeyCode": 49,
+    "requireEarphoneForAutoWake": true,
+    "targetEarphoneNames": ["JLab Flex"],
+    "ttsLockFile": "/tmp/star_mac_tts_playing.lock"
 }

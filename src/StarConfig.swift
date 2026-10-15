@@ -13,6 +13,30 @@ struct StarConfig: Codable {
     var fastPollIntervalMs: Int = 250
     var hotKeyModifiers: [String] = ["control", "option"]
     var hotKeyCode: Int = 49
+    var requireEarphoneForAutoWake: Bool = true
+    var targetEarphoneNames: [String] = ["JLab Flex"]
+    var ttsLockFile: String = "/tmp/star_mac_tts_playing.lock"
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        starHost = try c.decodeIfPresent(String.self, forKey: .starHost) ?? "192.168.4.33"
+        starPort = try c.decodeIfPresent(Int.self, forKey: .starPort) ?? 5001
+        clientId = try c.decodeIfPresent(String.self, forKey: .clientId) ?? "mac-listener"
+        minRecordSec = try c.decodeIfPresent(Double.self, forKey: .minRecordSec) ?? 1.0
+        maxRecordSec = try c.decodeIfPresent(Double.self, forKey: .maxRecordSec) ?? 15.0
+        silenceTimeoutSec = try c.decodeIfPresent(Double.self, forKey: .silenceTimeoutSec) ?? 1.5
+        silenceThresholdRms = try c.decodeIfPresent(Float.self, forKey: .silenceThresholdRms) ?? 0.015
+        errorDisplaySec = try c.decodeIfPresent(Double.self, forKey: .errorDisplaySec) ?? 1.2
+        followUpListenSec = try c.decodeIfPresent(Double.self, forKey: .followUpListenSec) ?? 3.5
+        fastPollIntervalMs = try c.decodeIfPresent(Int.self, forKey: .fastPollIntervalMs) ?? 250
+        hotKeyModifiers = try c.decodeIfPresent([String].self, forKey: .hotKeyModifiers) ?? ["control", "option"]
+        hotKeyCode = try c.decodeIfPresent(Int.self, forKey: .hotKeyCode) ?? 49
+        requireEarphoneForAutoWake = try c.decodeIfPresent(Bool.self, forKey: .requireEarphoneForAutoWake) ?? true
+        targetEarphoneNames = try c.decodeIfPresent([String].self, forKey: .targetEarphoneNames) ?? ["JLab Flex"]
+        ttsLockFile = try c.decodeIfPresent(String.self, forKey: .ttsLockFile) ?? "/tmp/star_mac_tts_playing.lock"
+    }
 
     static func load(from directory: String) -> StarConfig {
         let url = URL(fileURLWithPath: directory).appendingPathComponent("config.json")

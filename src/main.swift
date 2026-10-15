@@ -1,20 +1,24 @@
 import Cocoa
 import Foundation
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked Sendable {
     var statusItem: NSStatusItem!
     var process: Process?
     var wakeCount = 0
     var countMenuItem: NSMenuItem!
     var statusMenuItem: NSMenuItem!
     var isPaused = false
-    
+
     // Components
     var starConfig: StarConfig!
     let captureService = AudioCaptureService()
     var apiClient: StarApiClient!
     let playbackService = AudioPlaybackService()
-    
+    var iconAnimator: StellaIconAnimator!
+    let earphoneMonitor = EarphoneMonitorService()
+    let orbHud = VoiceOrbHudController()
+    let bridgeManager = BridgeBarManager()
+
     var isBusy = false
     var isFollowUp = false
     var isAppendListening = false
@@ -23,20 +27,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var currentInteractionTask: Task<Void, Never>?
     var cooldownEndTime: Date = Date.distantPast
     var currentActivity: NSObjectProtocol?
-    
+
     var baseDir: String {
         return Bundle.main.bundleURL.deletingLastPathComponent().path
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        updateStatusIcon("☆")
-
-        setupMenu()
-        
         starConfig = StarConfig.load(from: "\(baseDir)/config")
         apiClient = StarApiClient(config: starConfig)
-        
+
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        iconAnimator = StellaIconAnimator(statusItem: statusItem, baseDir: baseDir)
+
+        captureService.onAudioLevel = { [weak self] level in
+            self?.orbHud.updateAudioLevel(level)
+        }
+
+        playbackService.onAudioLevel = { [weak self] level in
+            self?.orbHud.updateAudioLevel(level)
+        }
+
         playbackService.onPlaybackFinished = { [weak self] in
             // 等喇叭殘響播完 (約 300ms) 先切入 👂 連續對話，避免殘響干擾 VAD
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -44,6 +54,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.startFollowUpListening()
             }
         }
+
+        bridgeManager.onStatusUpdated = { [weak self] in
+            self?.rebuildMenu()
+        }
+        bridgeManager.start()
 
         GlobalHotKey.onTrigger = { [weak self] in
             DispatchQueue.main.async { [weak self] in
@@ -61,30 +76,87 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         GlobalHotKey.register(config: starConfig)
 
-        startKeywordSpotter()
+        if starConfig.requireEarphoneForAutoWake {
+            // Start in standby until JLab Flex is detected
+            isPaused = true
+            iconAnimator.stopSpinning()
+            rebuildMenu()
+
+            earphoneMonitor.onConnectionChanged = { [weak self] connected, deviceName in
+                guard let self = self else { return }
+                if connected {
+                    print("🎧 Target earphone connected (\(deviceName ?? "JLab Flex")) -> Auto-resuming wakeword listener!")
+                    self.resumeListening()
+                } else {
+                    print("📴 Target earphone disconnected -> Entering Standby (Mic OFF)!")
+                    self.pauseListening()
+                }
+            }
+            earphoneMonitor.start(targetNames: starConfig.targetEarphoneNames)
+        } else {
+            rebuildMenu()
+            iconAnimator.startSpinning()
+            startKeywordSpotter()
+        }
     }
 
-    func setupMenu() {
+    func menuWillOpen(_ menu: NSMenu) {
+        bridgeManager.refreshEmulatorStatusAsync()
+    }
+
+    func rebuildMenu() {
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "☆ Star Wakeword Listener", action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem.separator())
-        
-        statusMenuItem = NSMenuItem(title: "● 狀態：監聽中", action: #selector(togglePause), keyEquivalent: "p")
+        menu.delegate = self
+
+        let headerTitle = "✦ Stella Voice & AGY Bridge"
+        let topHeader = NSMenuItem(title: headerTitle, action: nil, keyEquivalent: "")
+        topHeader.isEnabled = false
+        menu.addItem(topHeader)
+
+        let earphoneTag: String
+        if earphoneMonitor.isEarphoneConnected, let dev = earphoneMonitor.connectedDeviceName {
+            earphoneTag = "🎧 \(dev)"
+        } else {
+            earphoneTag = "等待 JLab Flex"
+        }
+
+        let stateTitle = isPaused
+            ? "⏸ 語音狀態：待命中 (\(earphoneTag) | 點擊手動喚醒)"
+            : "● 語音狀態：監聽中 (\(earphoneTag) | 點擊暫停)"
+        statusMenuItem = NSMenuItem(title: stateTitle, action: #selector(togglePause), keyEquivalent: "p")
+        statusMenuItem.target = self
         menu.addItem(statusMenuItem)
-        menu.addItem(NSMenuItem(title: "🎯 喚醒詞：Stella | 快捷鍵：休眠/喚醒", action: nil, keyEquivalent: ""))
-        
-        countMenuItem = NSMenuItem(title: "📊 觸發統計：已成功喚醒 0 次", action: nil, keyEquivalent: "")
+
+        let wakeHint = NSMenuItem(title: "🎯 喚醒詞：Stella | 快捷鍵：Ctrl+Opt+Space", action: nil, keyEquivalent: "")
+        wakeHint.isEnabled = false
+        menu.addItem(wakeHint)
+
+        countMenuItem = NSMenuItem(title: "📊 觸發統計：已成功喚醒 \(wakeCount) 次", action: nil, keyEquivalent: "")
+        countMenuItem.isEnabled = false
         menu.addItem(countMenuItem)
+
+        let testItem = NSMenuItem(title: "🔔 測試提示音 & 全息聲波光球", action: #selector(testSound), keyEquivalent: "t")
+        testItem.target = self
+        menu.addItem(testItem)
+
+        let keywordsItem = NSMenuItem(title: "⚙️ 編輯喚醒詞 (keywords.txt)", action: #selector(openKeywords), keyEquivalent: "e")
+        keywordsItem.target = self
+        menu.addItem(keywordsItem)
+
         menu.addItem(NSMenuItem.separator())
-        
-        menu.addItem(NSMenuItem(title: "🔔 測試提示音", action: #selector(testSound), keyEquivalent: "t"))
-        menu.addItem(NSMenuItem(title: "⚙️ 編輯喚醒詞", action: #selector(openKeywords), keyEquivalent: "e"))
+
+        // Append all StarBridgeBar items (Bridge Status, Journalia, STAR Backlog, Dev Console, SonarQube)
+        bridgeManager.appendBridgeMenuItems(to: menu)
+
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "❌ 退出程式", action: #selector(quitApp), keyEquivalent: "q"))
+
+        let quitItem = NSMenuItem(title: "❌ 退出 StarListener & Bridge Helper", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
 
         statusItem.menu = menu
     }
-    
+
     @objc func togglePause() {
         if isPaused {
             resumeListening()
@@ -92,60 +164,75 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             pauseListening()
         }
     }
-    
+
     func pauseListening() {
-        guard !isPaused else { return }
+        guard !isPaused else {
+            iconAnimator.stopSpinning()
+            orbHud.hide()
+            rebuildMenu()
+            return
+        }
         isPaused = true
-        statusMenuItem.title = "⏸ 狀態：已暫停 (點擊恢復)"
-        updateStatusIcon("😴")
-        
+        iconAnimator.stopSpinning()
+        orbHud.hide()
+        rebuildMenu()
+
         // 1. 終止背景喚醒進程
         process?.terminate()
         process = nil
-        
+
         // 2. 即時中斷當前所有音訊錄音
         captureService.stopRecording()
-        
+
         // 3. 取消背景網絡請求與輪詢 Task
         currentInteractionTask?.cancel()
         currentInteractionTask = nil
-        
+
         // 4. 停止音訊播放
         playbackService.stop()
-        
+
         // 5. 取消重設或錯誤還原計時
         resetWorkItem?.cancel()
         resetWorkItem = nil
-        
+
         // 6. 釋放系統防休眠 Assertion
         if let activity = currentActivity {
             ProcessInfo.processInfo.endActivity(activity)
             currentActivity = nil
         }
-        
+
         // 7. 重設內部狀態旗標
         isBusy = false
         isFollowUp = false
         isAppendListening = false
         isAppendInFlight = false
         followUpRetryCount = 0
-        
-        print("⏸ Listener paused, all audio/tasks stopped and background process terminated.")
+
+        print("⏸ Listener paused (Standby), all audio/tasks stopped and background process terminated.")
     }
-    
+
     func resumeListening() {
-        guard isPaused else { return }
+        guard isPaused else {
+            iconAnimator.startSpinning()
+            rebuildMenu()
+            return
+        }
         isPaused = false
         cooldownEndTime = Date.distantPast
         lastTriggerTime = Date.distantPast
-        statusMenuItem.title = "● 狀態：監聽中 (點擊暫停)"
-        updateStatusIcon("☆")
-        print("▶️ Listener resumed, starting background process...")
+        iconAnimator.startSpinning()
+        rebuildMenu()
+        print("▶️ Listener resumed, starting background sherpa-onnx process...")
         startKeywordSpotter()
     }
 
     @objc func testSound() {
         NSSound(named: "Tink")?.play()
+        orbHud.show(mode: "hearing", caption: "HOLOGRAPHIC VOICE ORB READY")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
+            guard let self = self, !self.isBusy else { return }
+            self.orbHud.hide()
+        }
     }
 
     @objc func openKeywords() {
@@ -156,15 +243,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func quitApp() {
         process?.terminate()
+        bridgeManager.stop()
         NSApplication.shared.terminate(nil)
     }
 
-    func updateStatusIcon(_ icon: String) {
-        DispatchQueue.main.async {
-            if let button = self.statusItem.button {
-                button.title = icon
-            }
+    private func isExternalTTSPlaying() -> Bool {
+        let lockPath = starConfig.ttsLockFile
+        guard !lockPath.isEmpty,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: lockPath),
+              let modDate = attrs[.modificationDate] as? Date else {
+            return false
         }
+        return Date().timeIntervalSince(modDate) < 60.0
     }
 
     var resetWorkItem: DispatchWorkItem?
@@ -174,13 +264,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isPaused else { return }
             let now = Date()
-            
-            // 1. 如果正喺度播緊聲（TTS），嚴格禁止自我喚醒與打斷，確保 Stella 講完每一句話
-            if self.playbackService.isPlaying {
+
+            // 1. 如果正喺度播緊聲（TTS 或異步 AGY 通知），嚴格禁止自我喚醒與打斷
+            if self.playbackService.isPlaying || self.isExternalTTSPlaying() {
                 print("🔇 Stella 播緊聲中，忽略喚醒詞避免打斷...")
                 return
             }
-            
+
             // 2. 如果處於 👂 連續對話或追加狀態，叫「Stella」則平順切換到新喚醒
             if self.isFollowUp || self.isAppendListening {
                 self.stopThinkingAppendListening()
@@ -196,16 +286,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.lastTriggerTime = now
             self.isBusy = true
             self.followUpRetryCount = 0
-            
-            self.wakeCount += 1
-            self.countMenuItem.title = "📊 觸發統計：已成功喚醒 \(self.wakeCount) 次 (剛剛)"
-            
-            self.resetWorkItem?.cancel()
-            
-            self.currentActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "StarVoiceInteraction")
 
-            // 提示音播緊嗰陣顯示 ✨，避免用家提早講嘢被截頭；等提示音播完 (350ms) 正式開咪先轉 🎙️
-            self.updateStatusIcon("✨")
+            self.wakeCount += 1
+            self.rebuildMenu()
+
+            self.resetWorkItem?.cancel()
+
+            self.currentActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .latencyCritical],
+                reason: "StarVoiceInteraction"
+            )
+
+            // 彈出 HUD 全息聲波光球！
+            self.orbHud.show(mode: "hearing", caption: "WAKEWORD DETECTED // READY")
             NSSound(named: "Tink")?.play()
 
             // 等 Tink 提示音播完 (約 350ms) 先開始收音，避免錄入提示音干擾 STT 及聲紋
@@ -218,17 +311,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func startInitialRecording() {
         guard !isPaused, isBusy else { return }
-        self.updateStatusIcon("🎙️")
+        orbHud.setMode("hearing", caption: "LISTENING... (SAY YOUR COMMAND)")
         captureService.startRecording(config: starConfig) { [weak self] pcmData in
             guard let self = self, self.isBusy, !self.isPaused else { return }
-            
+
             if pcmData.isEmpty {
                 print("⚠️ Initial recording returned empty audio, returning to idle.")
                 self.finishInteraction(success: false)
                 return
             }
-            
-            self.updateStatusIcon("⏳")
+
+            self.orbHud.setMode("waiting_agy", caption: "STELLA THINKING... (SPEAK TO APPEND)")
             self.executeInteraction(pcmData: pcmData, isFollowUpTurn: false)
         }
     }
@@ -241,37 +334,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if Task.isCancelled || self.isPaused { return }
                 // 1. 即時啟動思考中追加監聽 (不用等 sendAudio 網絡來回，零時間縫隙)
                 self.startThinkingAppendListening()
-                
+
                 let msgId = try await self.apiClient.sendAudio(pcmData: pcmData)
                 if Task.isCancelled || self.isPaused { return }
-                
+
                 // 250ms 高速輪詢
                 var wavUrl = try await self.apiClient.pollStats(messageId: msgId)
                 if Task.isCancelled || self.isPaused { return }
-                
+
                 // 2. 關鍵保護：如果用家正喺度講緊追加嘅嘢 (isSpeechActive)，絕對唔好中斷用家！
                 while self.captureService.isSpeechActive {
                     if Task.isCancelled || self.isPaused { return }
                     print("🎙️ User is actively speaking append chunk, waiting for utterance to finish...")
                     try await Task.sleep(nanoseconds: 250_000_000)
                 }
-                
+
                 // 若剛好在完成瞬間送出了追加，重新等待新合併回應
                 if self.isAppendInFlight {
                     print("⏳ Append was sent in flight, re-polling for updated response...")
                     wavUrl = try await self.apiClient.pollStats(messageId: msgId)
                 }
                 if Task.isCancelled || self.isPaused { return }
-                
+
                 // 伺服器已完成且用家冇講緊嘢，關閉追加監聽並下載音訊
                 self.stopThinkingAppendListening()
                 let wavData = try await self.apiClient.downloadVoiceResult(url: wavUrl)
                 if Task.isCancelled || self.isPaused { return }
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self, !self.isPaused, self.isBusy else { return }
                     self.followUpRetryCount = 0
-                    self.updateStatusIcon("🔊")
+                    self.orbHud.setMode("playing", caption: "STELLA SPEAKING...")
                     self.playbackService.play(wavData: wavData)
                 }
             } catch {
@@ -299,26 +392,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self, !self.isPaused, self.isBusy && !self.playbackService.isPlaying else { return }
             self.isAppendListening = true
             print("👂 Started Thinking Append Listener (waiting for follow-up speech)...")
-            
+
             self.captureService.startRecording(
                 config: self.starConfig,
                 timeoutWithoutSpeechSec: 15.0,
-                onSpeechStarted: {
+                onSpeechStarted: { [weak self] in
                     print("🎙️ Speech detected during thinking! Capturing append chunk...")
+                    self?.orbHud.setMode("hearing", caption: "APPENDING SPEECH...")
                 }
             ) { [weak self] appendPcmData in
                 guard let self = self, !self.isPaused else { return }
                 self.isAppendListening = false
-                
+
                 if !appendPcmData.isEmpty {
                     print("🔀 Captured append chunk (\(appendPcmData.count) bytes), sending to /api/web_request...")
                     self.isAppendInFlight = true
+                    self.orbHud.setMode("waiting_agy", caption: "MERGING APPENDED SPEECH...")
                     Task {
                         do {
                             _ = try await self.apiClient.sendAudio(pcmData: appendPcmData, isAppend: true)
                             print("✅ Append audio sent successfully!")
                             self.isAppendInFlight = false
-                            // 若依然喺思考中，繼續支援下一段追加
                             if self.isBusy && !self.playbackService.isPlaying && !self.isPaused {
                                 self.startThinkingAppendListening()
                             }
@@ -346,31 +440,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func startFollowUpListening() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isPaused, !self.playbackService.isPlaying else { return }
-            self.updateStatusIcon("👂")
+            self.orbHud.setMode("followup", caption: "FOLLOW-UP READY (SPEAK NOW)...")
             self.isFollowUp = true
             self.isBusy = true
             print("👂 Entered Follow-up Mode (listening for \(self.starConfig.followUpListenSec)s without wake word)...")
-            
+
             self.captureService.startRecording(
                 config: self.starConfig,
                 timeoutWithoutSpeechSec: self.starConfig.followUpListenSec,
                 onSpeechStarted: { [weak self] in
                     guard let self = self, !self.isPaused else { return }
-                    self.updateStatusIcon("🎙️")
+                    self.orbHud.setMode("hearing", caption: "LISTENING...")
                     print("🎙️ Follow-up speech detected! Recording...")
                 }
             ) { [weak self] pcmData in
                 guard let self = self, !self.isPaused, self.isFollowUp else { return }
                 self.isFollowUp = false
-                
+
                 if pcmData.isEmpty {
                     print("👂 Follow-up timeout with silence, returning to idle.")
                     self.finishInteraction(success: true)
                     return
                 }
-                
+
                 print("👂 Follow-up audio captured (\(pcmData.count) bytes), sending...")
-                self.updateStatusIcon("⏳")
+                self.orbHud.setMode("waiting_agy", caption: "STELLA THINKING... (SPEAK TO APPEND)")
                 self.executeInteraction(pcmData: pcmData, isFollowUpTurn: true)
             }
         }
@@ -379,7 +473,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleError(_ error: Error, isFollowUpTurn: Bool = false) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            
+
             if case StarError.noSpeechDetected = error {
                 let errorMsg = "⚠️ 伺服器未檢測到有效語音指令 (STT 回傳為空)，請在聽到提示音後清晰說出完整問題。\n"
                 print(errorMsg)
@@ -389,7 +483,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     handle.write(errorMsg.data(using: .utf8)!)
                     handle.closeFile()
                 }
-                self.updateStatusIcon("❓")
+                self.orbHud.setMode("waiting_agy", caption: "NO SPEECH DETECTED")
                 self.resetWorkItem?.cancel()
                 let workItem = DispatchWorkItem { [weak self] in
                     self?.finishInteraction(success: false)
@@ -412,9 +506,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 handle.closeFile()
             }
 
-            self.updateStatusIcon("😵‍💫")
-            
-            // 專為連續對話設計嘅容錯續聽：若喺 👂 模式出錯，閃爍 😵‍💫 1 秒後自動重返 👂 模式
+            self.orbHud.setMode("waiting_agy", caption: "CONNECTION ERROR // RETRYING")
+
             if isFollowUpTurn && self.followUpRetryCount < 2 {
                 self.followUpRetryCount += 1
                 print("😵‍💫 Follow-up turn errored, retrying listening in 1.0s (attempt \(self.followUpRetryCount)/2)...")
@@ -428,7 +521,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
-            // 一般初次喚醒出錯，顯示短暫 😵‍💫 後恢復休眠
             self.resetWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
                 self?.finishInteraction(success: false)
@@ -440,7 +532,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func finishInteraction(success: Bool) {
         DispatchQueue.main.async {
-            self.updateStatusIcon(self.isPaused ? "😴" : "☆")
+            self.orbHud.hide()
+            if self.isPaused {
+                self.iconAnimator.stopSpinning()
+            } else {
+                self.iconAnimator.startSpinning()
+            }
             self.isFollowUp = false
             self.isAppendListening = false
             self.followUpRetryCount = 0
@@ -460,10 +557,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startKeywordSpotter() {
+        process?.terminate()
+        process = nil
+
         let binPath = "\(baseDir)/bin/sherpa-onnx-keyword-spotter-microphone"
         let modelDir = "\(baseDir)/model"
         let keywordsPath = "\(baseDir)/config/keywords.txt"
-        
+
         if !FileManager.default.fileExists(atPath: binPath) {
             print("Error: sherpa-onnx binary not found at \(binPath)")
             return
@@ -497,7 +597,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         process?.standardError = pipe
 
         let logPath = "\(baseDir)/listener.log"
-        FileManager.default.createFile(atPath: logPath, contents: nil, attributes: nil)
+        if !FileManager.default.fileExists(atPath: logPath) {
+            FileManager.default.createFile(atPath: logPath, contents: nil, attributes: nil)
+        }
         let logFileHandle = FileHandle(forWritingAtPath: logPath)
 
         let outHandle = pipe.fileHandleForReading
@@ -538,10 +640,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         process?.terminate()
+        bridgeManager.stop()
     }
 }
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
+app.setActivationPolicy(.accessory)
 app.run()

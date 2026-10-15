@@ -19,6 +19,8 @@ class AudioCaptureService {
         return isRecording && speechStarted
     }
     
+    var onAudioLevel: ((Float) -> Void)?
+    
     func startRecording(
         config: StarConfig,
         timeoutWithoutSpeechSec: Double? = nil,
@@ -81,6 +83,8 @@ class AudioCaptureService {
                 sum += sample * sample
             }
             let rms = sqrt(sum / Float(frameLength))
+            let normalizedLevel = min(1.0, rms * 14.0)
+            self.onAudioLevel?(normalizedLevel)
             
             // 寫入 pcmData
             let bytes = UnsafeBufferPointer(start: channelData, count: frameLength)
