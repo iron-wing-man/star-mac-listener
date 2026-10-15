@@ -14,7 +14,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
     let captureService = AudioCaptureService()
     var apiClient: StarApiClient!
     let playbackService = AudioPlaybackService()
-    var iconAnimator: StellaIconAnimator!
     let earphoneMonitor = EarphoneMonitorService()
     let orbHud = VoiceOrbHudController()
     let bridgeManager = BridgeBarManager()
@@ -37,7 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
         apiClient = StarApiClient(config: starConfig)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        iconAnimator = StellaIconAnimator(statusItem: statusItem, baseDir: baseDir)
+        setupStaticIcon()
 
         captureService.onAudioLevel = { [weak self] level in
             self?.orbHud.updateAudioLevel(level)
@@ -79,7 +78,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
         if starConfig.requireEarphoneForAutoWake {
             // Start in standby until JLab Flex is detected
             isPaused = true
-            iconAnimator.stopSpinning()
             rebuildMenu()
 
             earphoneMonitor.onConnectionChanged = { [weak self] connected, deviceName in
@@ -95,8 +93,40 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
             earphoneMonitor.start(targetNames: starConfig.targetEarphoneNames)
         } else {
             rebuildMenu()
-            iconAnimator.startSpinning()
             startKeywordSpotter()
+        }
+    }
+
+    private func setupStaticIcon() {
+        let possiblePaths = [
+            Bundle.main.resourcePath.map { "\($0)/stella_colored_vector.svg" } ?? "",
+            "\(baseDir)/assets/stella_colored_vector.svg",
+            NSHomeDirectory() + "/Developer/star/star-mac-bridge-bar/stella_colored_vector.svg",
+            NSHomeDirectory() + "/Developer/star/starship/stella_colored_vector.svg"
+        ]
+
+        var baseImage: NSImage?
+        for path in possiblePaths where !path.isEmpty {
+            if FileManager.default.fileExists(atPath: path),
+               let img = NSImage(contentsOfFile: path) {
+                baseImage = img
+                break
+            }
+        }
+
+        let size = NSSize(width: 18, height: 18)
+        if let sourceImage = baseImage {
+            let staticIcon = NSImage(size: size, flipped: false) { rect in
+                sourceImage.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0)
+                return true
+            }
+            staticIcon.isTemplate = true
+            statusItem.button?.image = staticIcon
+        } else {
+            // Fallback system icon if SVG file not found
+            let fallback = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Stella")
+            fallback?.isTemplate = true
+            statusItem.button?.image = fallback
         }
     }
 
@@ -167,13 +197,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
 
     func pauseListening() {
         guard !isPaused else {
-            iconAnimator.stopSpinning()
             orbHud.hide()
             rebuildMenu()
             return
         }
         isPaused = true
-        iconAnimator.stopSpinning()
         orbHud.hide()
         rebuildMenu()
 
@@ -213,14 +241,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
 
     func resumeListening() {
         guard isPaused else {
-            iconAnimator.startSpinning()
             rebuildMenu()
             return
         }
         isPaused = false
         cooldownEndTime = Date.distantPast
         lastTriggerTime = Date.distantPast
-        iconAnimator.startSpinning()
         rebuildMenu()
         print("▶️ Listener resumed, starting background sherpa-onnx process...")
         startKeywordSpotter()
@@ -533,11 +559,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
     func finishInteraction(success: Bool) {
         DispatchQueue.main.async {
             self.orbHud.hide()
-            if self.isPaused {
-                self.iconAnimator.stopSpinning()
-            } else {
-                self.iconAnimator.startSpinning()
-            }
             self.isFollowUp = false
             self.isAppendListening = false
             self.followUpRetryCount = 0

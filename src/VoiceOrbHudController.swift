@@ -20,18 +20,19 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
         setupPanel()
     }
 
-    private func centeredRect() -> NSRect {
-        let size = NSSize(width: 440, height: 440)
+    private func topRightRect() -> NSRect {
+        let size = NSSize(width: 360, height: 360)
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let margin: CGFloat = 16.0
         let origin = NSPoint(
-            x: screenFrame.midX - size.width / 2.0,
-            y: screenFrame.midY - size.height / 2.0
+            x: screenFrame.maxX - size.width - margin,
+            y: screenFrame.maxY - size.height - margin
         )
         return NSRect(origin: origin, size: size)
     }
 
     private func setupPanel() {
-        let rect = centeredRect()
+        let rect = topRightRect()
         panel = VoiceOrbPanel(
             contentRect: rect,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -81,7 +82,7 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
             guard let self = self else { return }
             self.hideWorkItem?.cancel()
             self.hideWorkItem = nil
-            self.panel.setFrame(self.centeredRect(), display: false)
+            self.panel.setFrame(self.topRightRect(), display: false)
             if !self.isVisible {
                 self.isVisible = true
                 self.panel.alphaValue = 1.0
@@ -148,8 +149,8 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%) scale(0.55);
-      width: 400px;
-      height: 400px;
+      width: 340px;
+      height: 340px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -167,8 +168,8 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
     }
     .orb-backdrop-glow {
       position: absolute;
-      width: 320px;
-      height: 320px;
+      width: 280px;
+      height: 280px;
       border-radius: 50%;
       background: radial-gradient(circle, rgba(16, 185, 129, 0.22) 0%, rgba(137, 207, 240, 0.12) 45%, transparent 70%);
       animation: orb-glow-pulse 3s infinite ease-in-out;
@@ -195,8 +196,8 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
     }
     .orb-center-core {
       position: absolute;
-      width: 88px;
-      height: 88px;
+      width: 80px;
+      height: 80px;
       border-radius: 50%;
       background: rgba(6, 17, 33, 0.88);
       border: 1.5px solid var(--border-cyan);
@@ -215,7 +216,7 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
       box-shadow: 0 0 35px var(--stella-pink-glow), inset 0 0 20px rgba(244, 63, 94, 0.3);
     }
     .orb-icon {
-      font-size: 1.2rem;
+      font-size: 1.1rem;
       color: var(--stella-pink);
       text-shadow: 0 0 10px var(--stella-pink-glow);
       animation: star-spin 6s linear infinite;
@@ -226,7 +227,7 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
     }
     .orb-status-text {
       font-family: var(--font-mono);
-      font-size: 0.62rem;
+      font-size: 0.58rem;
       font-weight: 800;
       letter-spacing: 0.1em;
       color: #10b981;
@@ -243,13 +244,13 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
       pointer-events: none;
     }
     .orb-ripple.ring-1 {
-      width: 220px;
-      height: 220px;
+      width: 190px;
+      height: 190px;
       animation: orb-ripple-anim 4s infinite linear;
     }
     .orb-ripple.ring-2 {
-      width: 290px;
-      height: 290px;
+      width: 250px;
+      height: 250px;
       animation: orb-ripple-anim 6s infinite reverse linear;
     }
     @keyframes orb-ripple-anim {
