@@ -17,6 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
     let earphoneMonitor = EarphoneMonitorService()
     let orbHud = VoiceOrbHudController()
     let bridgeManager = BridgeBarManager()
+    var wakeLogger: WakeEventLogger!
 
     var isBusy = false
     var isFollowUp = false
@@ -34,6 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
     func applicationDidFinishLaunching(_ notification: Notification) {
         starConfig = StarConfig.load(from: "\(baseDir)/config")
         apiClient = StarApiClient(config: starConfig)
+        wakeLogger = WakeEventLogger(baseDir: baseDir)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         setupStaticIcon()
@@ -165,6 +167,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
         countMenuItem.isEnabled = false
         menu.addItem(countMenuItem)
 
+        // 🎯 最近一次喚醒音素與回饋標記 (Phoneme Rules Tuning)
+        if let last = wakeLogger?.lastEvent {
+            let feedbackIcon: String
+            switch last.feedback {
+            case "correct": feedbackIcon = " (✅ 已標記正確)"
+            case "false_trigger": feedbackIcon = " (❌ 已標記誤觸)"
+            default: feedbackIcon = " (待標記)"
+            }
+            let infoItem = NSMenuItem(title: "🔍 最近喚醒: [\(last.keyword)] \(last.tokenString)\(feedbackIcon)", action: nil, keyEquivalent: "")
+            infoItem.isEnabled = false
+            menu.addItem(infoItem)
+
+            let correctItem = NSMenuItem(title: "   👍 標記為：正確喚醒 (Correct)", action: #selector(markCorrectWake), keyEquivalent: "")
+            correctItem.target = self
+            menu.addItem(correctItem)
+
+            let falseItem = NSMenuItem(title: "   👎 標記為：誤觸 (False Trigger)", action: #selector(markFalseWake), keyEquivalent: "")
+            falseItem.target = self
+            menu.addItem(falseItem)
+        }
+
         let testItem = NSMenuItem(title: "🔔 測試提示音 & 全息聲波光球", action: #selector(testSound), keyEquivalent: "t")
         testItem.target = self
         menu.addItem(testItem)
@@ -172,6 +195,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
         let keywordsItem = NSMenuItem(title: "⚙️ 編輯喚醒詞 (keywords.txt)", action: #selector(openKeywords), keyEquivalent: "e")
         keywordsItem.target = self
         menu.addItem(keywordsItem)
+
+        let logEventsItem = NSMenuItem(title: "📋 查看喚醒音素記錄 (wake_events.jsonl)", action: #selector(openWakeEventsLog), keyEquivalent: "l")
+        logEventsItem.target = self
+        menu.addItem(logEventsItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -267,6 +294,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
         NSWorkspace.shared.open(url)
     }
 
+    @objc func markCorrectWake() {
+        wakeLogger.markLastEvent(feedback: "correct")
+        rebuildMenu()
+    }
+
+    @objc func markFalseWake() {
+        wakeLogger.markLastEvent(feedback: "false_trigger")
+        // 若當前正喺度錄音或顯示光球，即刻停止並隱藏
+        if isBusy {
+            finishInteraction(success: false)
+        } else {
+            orbHud.hide()
+        }
+        rebuildMenu()
+    }
+
+    @objc func openWakeEventsLog() {
+        let path = "\(baseDir)/config/wake_events.jsonl"
+        let url = URL(fileURLWithPath: path)
+        NSWorkspace.shared.open(url)
+    }
+
     @objc func quitApp() {
         process?.terminate()
         bridgeManager.stop()
@@ -286,7 +335,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
     var resetWorkItem: DispatchWorkItem?
     var lastTriggerTime: Date = Date.distantPast
 
-    func onWakeWordDetected() {
+    func onWakeWordDetected(keyword: String = "Stella", tokens: [String] = []) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isPaused else { return }
             let now = Date()
@@ -314,6 +363,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
             self.followUpRetryCount = 0
 
             self.wakeCount += 1
+
+            // 記錄本次喚醒事件 (供用家標記正確/誤觸以最佳化音素規則)
+            let loggedRecord = self.wakeLogger?.logWakeEvent(keyword: keyword, tokens: tokens)
             self.rebuildMenu()
 
             self.resetWorkItem?.cancel()
@@ -323,8 +375,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
                 reason: "StarVoiceInteraction"
             )
 
-            // 彈出 HUD 全息聲波光球！
-            self.orbHud.show(mode: "hearing", caption: "WAKEWORD DETECTED // READY")
+            // 彈出 HUD 全息聲波光球 (顯示具體中標嘅喚醒詞)
+            let tokenSuffix = loggedRecord?.tokens.isEmpty == false ? " [\(loggedRecord!.tokenString)]" : ""
+            self.orbHud.show(mode: "hearing", caption: "\(keyword.uppercased()) READY\(tokenSuffix)")
             NSSound(named: "Tink")?.play()
 
             // 等 Tink 提示音播完 (約 350ms) 先開始收音，避免錄入提示音干擾 STT 及聲紋
@@ -623,6 +676,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
         }
         let logFileHandle = FileHandle(forWritingAtPath: logPath)
 
+        var jsonAccumulator = ""
+        var lineBuffer = ""
+
         let outHandle = pipe.fileHandleForReading
         outHandle.readabilityHandler = { [weak self] pipe in
             let data = pipe.availableData
@@ -630,23 +686,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
                 outHandle.readabilityHandler = nil
                 return
             }
-            if let line = String(data: data, encoding: .utf8) {
-                print(line, terminator: "")
+            if let chunk = String(data: data, encoding: .utf8) {
+                print(chunk, terminator: "")
                 if let logFileHandle = logFileHandle {
                     logFileHandle.seekToEndOfFile()
-                    if let logData = line.data(using: .utf8) {
+                    if let logData = chunk.data(using: .utf8) {
                         logFileHandle.write(logData)
                     }
                 }
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.contains("\"keyword\"") && trimmed.lowercased().contains("stella") {
-                    if let self = self, !self.isPaused {
-                        self.onWakeWordDetected()
+
+                lineBuffer += chunk
+                while let newlineRange = lineBuffer.range(of: "\n") {
+                    let rawLine = String(lineBuffer[..<newlineRange.lowerBound])
+                    lineBuffer.removeSubrange(..<newlineRange.upperBound)
+                    
+                    // 支援多行 JSON 拼合 (sherpa-onnx 輸出 tokens 會跨行)
+                    let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if jsonAccumulator.isEmpty {
+                        if let braceIdx = trimmed.firstIndex(of: "{") {
+                            jsonAccumulator = String(trimmed[braceIdx...])
+                        }
+                    } else {
+                        jsonAccumulator += " " + trimmed
                     }
-                } else if trimmed.contains("Stella") && !trimmed.contains("keywords_file") {
-                    // Fallback for non-JSON output just in case
-                    if let self = self, !self.isPaused {
-                        self.onWakeWordDetected()
+
+                    if !jsonAccumulator.isEmpty && jsonAccumulator.contains("}") {
+                        let completeJson = jsonAccumulator
+                        jsonAccumulator = ""
+                        self?.handleSpotterJson(completeJson)
+                    } else if jsonAccumulator.isEmpty {
+                        self?.handleSpotterOutputLine(rawLine)
                     }
                 }
             }
@@ -656,6 +725,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
             try process?.run()
         } catch {
             print("Failed to start sherpa-onnx process: \(error)")
+        }
+    }
+
+    private func handleSpotterJson(_ jsonStr: String) {
+        guard let jsonData = jsonStr.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            return
+        }
+
+        let keyword = (obj["keyword"] as? String) ?? "Stella"
+        let tokens = (obj["tokens"] as? [String]) ?? []
+
+        if keyword.lowercased().contains("stella") {
+            if !self.isPaused {
+                self.onWakeWordDetected(keyword: keyword, tokens: tokens)
+            }
+        }
+    }
+
+    private func handleSpotterOutputLine(_ rawLine: String) {
+        let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return }
+
+        // Fallback for non-JSON lines or variations
+        if trimmed.contains("\"keyword\"") && trimmed.lowercased().contains("stella") {
+            if !self.isPaused {
+                self.onWakeWordDetected(keyword: "Stella", tokens: [])
+            }
+        } else if trimmed.contains("Stella") && !trimmed.contains("keywords_file") && !trimmed.contains("config") {
+            if !self.isPaused {
+                self.onWakeWordDetected(keyword: "Stella", tokens: [])
+            }
         }
     }
 
