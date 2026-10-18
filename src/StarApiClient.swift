@@ -68,7 +68,7 @@ class StarApiClient {
         request.setValue(config.clientId, forHTTPHeaderField: "X-Real-IP")
         
         let intervalMs = config.fastPollIntervalMs > 0 ? config.fastPollIntervalMs : 250
-        let maxAttempts = (45 * 1000) / intervalMs
+        let maxAttempts = (300 * 1000) / intervalMs
         var lastStatus = ""
         
         for i in 1...maxAttempts {
