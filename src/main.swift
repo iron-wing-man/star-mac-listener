@@ -390,7 +390,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
 
     func startInitialRecording() {
         guard !isPaused, isBusy else { return }
-        orbHud.setMode("hearing", caption: "LISTENING... (SAY YOUR COMMAND)")
+        orbHud.setMode("hearing", caption: "")
         captureService.startRecording(config: starConfig) { [weak self] pcmData in
             guard let self = self, self.isBusy, !self.isPaused else { return }
 
@@ -529,7 +529,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
                 timeoutWithoutSpeechSec: self.starConfig.followUpListenSec,
                 onSpeechStarted: { [weak self] in
                     guard let self = self, !self.isPaused else { return }
-                    self.orbHud.setMode("hearing", caption: "LISTENING...")
+                    self.orbHud.setMode("hearing", caption: "")
                     print("🎙️ Follow-up speech detected! Recording...")
                 }
             ) { [weak self] pcmData in

@@ -6,7 +6,7 @@ struct StarConfig: Codable {
     var clientId: String = "mac-listener"
     var minRecordSec: Double = 1.0
     var maxRecordSec: Double = 15.0
-    var silenceTimeoutSec: Double = 1.5
+    var silenceTimeoutSec: Double = 3.0
     var silenceThresholdRms: Float = 0.015
     var errorDisplaySec: Double = 1.2
     var followUpListenSec: Double = 3.5
@@ -26,7 +26,7 @@ struct StarConfig: Codable {
         clientId = try c.decodeIfPresent(String.self, forKey: .clientId) ?? "mac-listener"
         minRecordSec = try c.decodeIfPresent(Double.self, forKey: .minRecordSec) ?? 1.0
         maxRecordSec = try c.decodeIfPresent(Double.self, forKey: .maxRecordSec) ?? 15.0
-        silenceTimeoutSec = try c.decodeIfPresent(Double.self, forKey: .silenceTimeoutSec) ?? 1.5
+        silenceTimeoutSec = try c.decodeIfPresent(Double.self, forKey: .silenceTimeoutSec) ?? 3.0
         silenceThresholdRms = try c.decodeIfPresent(Float.self, forKey: .silenceThresholdRms) ?? 0.015
         errorDisplaySec = try c.decodeIfPresent(Double.self, forKey: .errorDisplaySec) ?? 1.2
         followUpListenSec = try c.decodeIfPresent(Double.self, forKey: .followUpListenSec) ?? 3.5

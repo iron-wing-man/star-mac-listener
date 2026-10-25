@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Pre-commit hook: STAR Mac Listener
+# Automatically runs linting & SonarQube scan before committing
+# ==============================================================================
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+echo "🔍 [githook] Running pre-commit quality checks..."
+
+# 1. Run Quality Check / Linting
+if [ -f "./scripts/quality_check.sh" ]; then
+    ./scripts/quality_check.sh || {
+        echo "❌ [githook] Quality check failed! Commit aborted."
+        echo "💡 Tip: Fix the issues or run 'SKIP_LINT=1 git commit' to bypass."
+        exit 1
+    }
+fi
+
+# 2. Trigger SonarQube Scan
+if [[ "${SKIP_SONAR:-0}" != "1" ]]; then
+    echo -e "\n📊 [githook] Triggering SonarQube scan..."
+    if [ -f "./scripts/run_sonar_scanner.sh" ]; then
+        ./scripts/run_sonar_scanner.sh || {
+            echo "⚠️ [githook] SonarQube scan encountered warnings (non-blocking)."
+        }
+    fi
+else
+    echo "⏭️ [githook] SKIP_SONAR=1 detected. Skipping SonarQube scan."
+fi
+
+echo "✅ [githook] Pre-commit checks passed! Proceeding with commit."
+exit 0

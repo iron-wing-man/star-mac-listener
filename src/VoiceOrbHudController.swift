@@ -288,11 +288,11 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
         <canvas id="orb-wave-canvas" width="400" height="400"></canvas>
         <div class="orb-center-core">
           <span class="orb-icon">✦</span>
-          <span class="orb-status-text" id="orb-status-text">LISTENING</span>
+          <span class="orb-status-text" id="orb-status-text"></span>
         </div>
         <div class="orb-ripple ring-1"></div>
         <div class="orb-ripple ring-2"></div>
-        <div class="orb-hud-caption" id="orb-hud-caption">LISTENING...</div>
+        <div class="orb-hud-caption" id="orb-hud-caption" style="display: none;"></div>
       </div>
       <script>
       const orbContainer = document.getElementById("central-voice-orb");
@@ -326,10 +326,14 @@ final class VoiceOrbHudController: NSObject, WKNavigationDelegate {
           orbStatusText.textContent = "FOLLOW-UP";
         } else {
           orbContainer.classList.remove("playing");
-          orbStatusText.textContent = "LISTENING";
+          orbStatusText.textContent = "";
         }
-        if (caption) {
+        if (caption && caption.length > 0 && !caption.includes("LISTENING")) {
+          orbHudCaption.style.display = "block";
           orbHudCaption.textContent = caption;
+        } else {
+          orbHudCaption.style.display = "none";
+          orbHudCaption.textContent = "";
         }
         isOrbVisible = true;
         if (!orbAnimFrame) {

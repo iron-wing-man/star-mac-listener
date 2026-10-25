@@ -14,3 +14,9 @@ StarListener.app/
 listener.log
 tmp/
 /tmp/
+
+# Environment & SonarQube
+.env
+.scannerwork/
+
+config/wake_events.jsonl
