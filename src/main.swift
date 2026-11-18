@@ -251,10 +251,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
         resetWorkItem = nil
 
         // 6. 釋放系統防休眠 Assertion
-        if let activity = currentActivity {
-            ProcessInfo.processInfo.endActivity(activity)
-            currentActivity = nil
-        }
+        endVoiceActivity()
 
         // 7. 重設內部狀態旗標
         isBusy = false
@@ -332,6 +329,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
         return Date().timeIntervalSince(modDate) < 60.0
     }
 
+    private func beginVoiceActivity() {
+        endVoiceActivity()
+        currentActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical],
+            reason: "StarVoiceInteraction"
+        )
+    }
+
+    private func endVoiceActivity() {
+        if let activity = currentActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            currentActivity = nil
+        }
+    }
+
     var resetWorkItem: DispatchWorkItem?
     var lastTriggerTime: Date = Date.distantPast
 
@@ -370,10 +382,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
 
             self.resetWorkItem?.cancel()
 
-            self.currentActivity = ProcessInfo.processInfo.beginActivity(
-                options: [.userInitiated, .latencyCritical],
-                reason: "StarVoiceInteraction"
-            )
+            self.beginVoiceActivity()
 
             // 彈出 HUD 全息聲波光球 (顯示具體中標嘅喚醒詞)
             let tokenSuffix = loggedRecord?.tokens.isEmpty == false ? " [\(loggedRecord!.tokenString)]" : ""
@@ -616,10 +625,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
             self.isAppendListening = false
             self.followUpRetryCount = 0
             self.captureService.stopRecording()
-            if let activity = self.currentActivity {
-                ProcessInfo.processInfo.endActivity(activity)
-                self.currentActivity = nil
-            }
+            self.endVoiceActivity()
             self.cooldownEndTime = Date().addingTimeInterval(1.0)
             self.isBusy = false
         }
@@ -761,6 +767,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, @unchecked S
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
+        endVoiceActivity()
         process?.terminate()
         bridgeManager.stop()
     }
