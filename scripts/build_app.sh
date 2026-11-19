@@ -56,11 +56,6 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-    </dict>
     <key>NSLocalNetworkUsageDescription</key>
     <string>需要存取本地網絡以連線至 star-service 伺服器。</string>
     <key>NSMicrophoneUsageDescription</key>

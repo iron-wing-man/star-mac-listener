@@ -1,6 +1,6 @@
 {
-    "starHost": "192.168.4.33",
-    "starPort": 5001,
+    "starHost": "starship.jasperman-studio.dev",
+    "starPort": 443,
     "clientId": "mac-listener",
     "minRecordSec": 1.5,
     "maxRecordSec": 15.0,

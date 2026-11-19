@@ -308,7 +308,7 @@ class BridgeBarManager: NSObject {
     }
 
     @objc func openWebDev() {
-        if let url = URL(string: "http://star-main.tail7d0b73.ts.net/dev/") {
+        if let url = URL(string: "https://starship.jasperman-studio.dev/dev/") {
             NSWorkspace.shared.open(url)
         }
     }

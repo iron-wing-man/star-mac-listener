@@ -1,8 +1,8 @@
 import Foundation
 
 struct StarConfig: Codable {
-    var starHost: String = "192.168.4.33"
-    var starPort: Int = 5001
+    var starHost: String = "starship.jasperman-studio.dev"
+    var starPort: Int = 443
     var clientId: String = "mac-listener"
     var minRecordSec: Double = 1.0
     var maxRecordSec: Double = 15.0
@@ -21,8 +21,8 @@ struct StarConfig: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        starHost = try c.decodeIfPresent(String.self, forKey: .starHost) ?? "192.168.4.33"
-        starPort = try c.decodeIfPresent(Int.self, forKey: .starPort) ?? 5001
+        starHost = try c.decodeIfPresent(String.self, forKey: .starHost) ?? "starship.jasperman-studio.dev"
+        starPort = try c.decodeIfPresent(Int.self, forKey: .starPort) ?? 443
         clientId = try c.decodeIfPresent(String.self, forKey: .clientId) ?? "mac-listener"
         minRecordSec = try c.decodeIfPresent(Double.self, forKey: .minRecordSec) ?? 1.0
         maxRecordSec = try c.decodeIfPresent(Double.self, forKey: .maxRecordSec) ?? 15.0
